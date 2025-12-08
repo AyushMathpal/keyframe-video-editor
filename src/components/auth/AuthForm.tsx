@@ -12,28 +12,24 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/Card";
-import {
-  userAtom,
-  authModeAtom,
-  isAuthLoadingAtom,
-  authErrorAtom,
-} from "~/store/user";
+import { userAtom, authModeAtom, authErrorAtom } from "~/store/user";
 import type { AuthMode } from "~/types/user";
+import { useRegisterUser } from "~/api";
 
 export function AuthForm() {
   const [authMode, setAuthMode] = useAtom(authModeAtom);
-  const [isLoading, setIsLoading] = useAtom(isAuthLoadingAtom);
   const [error, setError] = useAtom(authErrorAtom);
   const setUser = useSetAtom(userAtom);
 
-  // Form state
+  // Form state (MVP: no password auth)
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Form validation
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  // Form validation errors
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // API mutation for registration
+  const registerMutation = useRegisterUser();
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -44,61 +40,51 @@ export function AuthForm() {
       newErrors.email = "Invalid email format";
     }
 
-    if (!password) {
-      newErrors.password = "Password is required";
-    } else if (password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters";
-    }
-
     if (authMode === "signup") {
       if (!name) {
         newErrors.name = "Name is required";
       }
-      if (password !== confirmPassword) {
-        newErrors.confirmPassword = "Passwords do not match";
-      }
     }
 
-    setErrors(newErrors);
+    setFormErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (!validateForm()) return;
 
-    setIsLoading(true);
-
-    try {
-      // Simulate API call - replace with actual backend call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Create user object to send to backend
-      const userData = {
+    registerMutation.mutate(
+      {
         email,
         name: authMode === "signup" ? name : (email.split("@")[0] ?? "User"),
-      };
-
-      // Set user in store
-      setUser(userData);
-
-      // Clear form
-      setEmail("");
-      setPassword("");
-      setName("");
-      setConfirmPassword("");
-    } catch {
-      setError("An error occurred. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
+      },
+      {
+        onSuccess: (data) => {
+          setUser({
+            id: data.id,
+            email: data.email,
+            name: data.name,
+          });
+          // Clear form
+          setEmail("");
+          setName("");
+        },
+        onError: (err) => {
+          setError(
+            err.response?.data?.detail ??
+              "An error occurred. Please try again.",
+          );
+        },
+      },
+    );
   };
 
   const toggleAuthMode = () => {
     setAuthMode((prev: AuthMode) => (prev === "login" ? "signup" : "login"));
-    setErrors({});
+    setFormErrors({});
     setError(null);
   };
 
@@ -129,8 +115,8 @@ export function AuthForm() {
               placeholder="Your name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              error={errors.name}
-              disabled={isLoading}
+              error={formErrors.name}
+              disabled={registerMutation.isPending}
             />
           )}
 
@@ -140,31 +126,9 @@ export function AuthForm() {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            error={errors.email}
-            disabled={isLoading}
+            error={formErrors.email}
+            disabled={registerMutation.isPending}
           />
-
-          <Input
-            label="Password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            error={errors.password}
-            disabled={isLoading}
-          />
-
-          {authMode === "signup" && (
-            <Input
-              label="Confirm Password"
-              type="password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              error={errors.confirmPassword}
-              disabled={isLoading}
-            />
-          )}
         </CardContent>
 
         <CardFooter className="flex-col gap-4">
@@ -172,7 +136,7 @@ export function AuthForm() {
             type="submit"
             className="w-full"
             size="lg"
-            isLoading={isLoading}
+            isLoading={registerMutation.isPending}
           >
             {authMode === "login" ? "Sign in" : "Create account"}
           </Button>

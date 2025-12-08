@@ -9,7 +9,7 @@ import { Providers } from "~/components/Providers";
 export const metadata: Metadata = {
   title: "Keyframe",
   description: "Keyframe is an agentic AI video editor.",
-  icons: [{ rel: "icon", url: "/favicon.ico" }],
+  icons: { icon: "/favicon.svg", apple: "/favicon.svg" },
 };
 
 export const viewport: Viewport = {

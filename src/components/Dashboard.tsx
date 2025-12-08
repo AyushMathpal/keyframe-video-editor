@@ -3,16 +3,9 @@
 import { useState, useCallback } from "react";
 import { useAtom, useSetAtom } from "jotai";
 import { userAtom, logoutAtom } from "~/store/user";
-import { FolderUpload, OutputDisplay } from "~/components/upload";
+import { FolderUpload, OutputDisplay, type FileItem } from "~/components/upload";
 import { Button } from "~/components/ui/Button";
 import { Zap, Sparkles, LogOut, User } from "lucide-react";
-
-interface FileItem {
-  name: string;
-  path: string;
-  size: number;
-  type: string;
-}
 
 interface OutputFile {
   id: string;
@@ -35,6 +28,7 @@ export function Dashboard() {
   const logout = useSetAtom(logoutAtom);
 
   const [selectedFiles, setSelectedFiles] = useState<FileItem[]>([]);
+  const [uploadedPaths, setUploadedPaths] = useState<string[]>([]);
   const [outputFiles, setOutputFiles] = useState<OutputFile[]>([]);
   const [processingState, setProcessingState] =
     useState<ProcessingState>("idle");
@@ -54,21 +48,27 @@ export function Dashboard() {
     [],
   );
 
-  const handleFolderSelect = useCallback((files: FileItem[]) => {
+  const handleFilesSelect = useCallback((files: FileItem[]) => {
     setSelectedFiles(files);
+    setUploadedPaths([]);
     setProcessingState("idle");
     setOutputFiles([]);
     setProgress(0);
   }, []);
 
-  const handleProcess = useCallback(async () => {
-    if (selectedFiles.length === 0) return;
+  const handleUploadComplete = useCallback((paths: string[]) => {
+    setUploadedPaths(paths);
+    console.log("Upload complete. Files stored at:", paths);
+  }, []);
 
-    setProcessingState("uploading");
-    await simulateProgress(0, 20, 50);
+  const handleProcess = useCallback(async () => {
+    if (uploadedPaths.length === 0) return;
 
     setProcessingState("processing");
-    await simulateProgress(20, 100, 80);
+    
+    // TODO: Call actual processing API
+    // For now, simulate processing
+    await simulateProgress(0, 100, 80);
 
     setOutputFiles([
       {
@@ -89,7 +89,7 @@ export function Dashboard() {
     ]);
 
     setProcessingState("complete");
-  }, [selectedFiles, simulateProgress]);
+  }, [uploadedPaths, simulateProgress]);
 
   const handleDownload = useCallback((file: OutputFile) => {
     console.log("Downloading:", file.name);
@@ -103,12 +103,16 @@ export function Dashboard() {
 
   const handleReset = useCallback(() => {
     setSelectedFiles([]);
+    setUploadedPaths([]);
     setOutputFiles([]);
     setProcessingState("idle");
     setProgress(0);
   }, []);
 
   if (!user) return null;
+
+  const hasUploadedFiles = uploadedPaths.length > 0;
+  const canProcess = hasUploadedFiles && processingState === "idle";
 
   return (
     <div className="bg-background min-h-screen">
@@ -173,19 +177,14 @@ export function Dashboard() {
             <StepIndicator
               step={1}
               label="Upload"
-              isActive={
-                processingState === "idle" && selectedFiles.length === 0
-              }
-              isComplete={selectedFiles.length > 0}
+              isActive={!hasUploadedFiles && processingState === "idle"}
+              isComplete={hasUploadedFiles}
             />
             <div className="bg-border h-px w-12" />
             <StepIndicator
               step={2}
               label="Process"
-              isActive={
-                processingState === "processing" ||
-                processingState === "uploading"
-              }
+              isActive={processingState === "processing"}
               isComplete={processingState === "complete"}
             />
             <div className="bg-border h-px w-12" />
@@ -233,9 +232,9 @@ export function Dashboard() {
                       )}
                   </div>
                   <FolderUpload
-                    onFolderSelect={handleFolderSelect}
-                    isUploading={false}
-                    disabled={false}
+                    onFilesSelect={handleFilesSelect}
+                    onUploadComplete={handleUploadComplete}
+                    disabled={processingState === "complete"}
                   />
                 </div>
 
@@ -259,7 +258,7 @@ export function Dashboard() {
           </div>
 
           {/* Action Button */}
-          {processingState === "idle" && selectedFiles.length > 0 && (
+          {canProcess && (
             <div className="animate-in fade-in slide-in-from-bottom flex justify-center">
               <Button size="lg" onClick={handleProcess} className="gap-2 px-8">
                 <Sparkles className="h-4 w-4" />
