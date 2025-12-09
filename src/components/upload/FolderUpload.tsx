@@ -18,7 +18,7 @@ export interface FileItem {
 
 interface FolderUploadProps {
   onFilesSelect: (files: FileItem[]) => void;
-  onUploadComplete?: (uploadedPaths: string[]) => void;
+  onUploadComplete?: (uploadedPaths: string[], projectId: string) => void;
   disabled?: boolean;
 }
 
@@ -185,8 +185,8 @@ export function FolderUpload({
       }
     }
 
-    if (paths.length > 0) {
-      onUploadComplete?.(paths);
+    if (paths.length > 0 && currentProjectId) {
+      onUploadComplete?.(paths, currentProjectId);
     }
   }, [
     videoFiles,

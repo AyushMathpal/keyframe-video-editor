@@ -1,18 +1,24 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAtom, useSetAtom } from "jotai";
 import { userAtom, logoutAtom } from "~/store/user";
-import { FolderUpload, OutputDisplay, type FileItem } from "~/components/upload";
+import {
+  FolderUpload,
+  OutputDisplay,
+  type FileItem,
+} from "~/components/upload";
 import { Button } from "~/components/ui/Button";
-import { Zap, Sparkles, LogOut, User } from "lucide-react";
+import { useStartProcessing, useProcessingStatus } from "~/api/hooks";
+import { Zap, Sparkles, LogOut, User, FileText } from "lucide-react";
 
 interface OutputFile {
   id: string;
   name: string;
   type: "xml" | "video";
-  size: number;
+  size?: number;
   downloadUrl?: string;
+  previewUrl?: string;
   duration?: string;
 }
 
@@ -29,97 +35,145 @@ export function Dashboard() {
 
   const [selectedFiles, setSelectedFiles] = useState<FileItem[]>([]);
   const [uploadedPaths, setUploadedPaths] = useState<string[]>([]);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [scriptText, setScriptText] = useState("");
   const [outputFiles, setOutputFiles] = useState<OutputFile[]>([]);
   const [processingState, setProcessingState] =
     useState<ProcessingState>("idle");
-  const [progress, setProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const simulateProgress = useCallback(
-    async (start: number, end: number, delay: number) => {
-      const steps = Array.from(
-        { length: end - start + 1 },
-        (_, i) => start + i,
-      );
-      for (const step of steps) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        setProgress(step);
+  // Processing hooks
+  const startProcessingMutation = useStartProcessing();
+  const { data: processingStatus } = useProcessingStatus(projectId, {
+    enabled: !!projectId && processingState === "processing",
+  });
+
+  // Handle processing status updates
+  useEffect(() => {
+    if (!processingStatus) return;
+
+    if (processingStatus.status === "complete") {
+      setProcessingState("complete");
+
+      // Build output files from response using download endpoints
+      const apiHost =
+        process.env.NEXT_PUBLIC_API_HOST ?? "http://localhost:8000";
+      const currentProjectId = processingStatus.project_id;
+      const files: OutputFile[] = [];
+
+      if (processingStatus.video_url) {
+        const previewUrl = `${apiHost}${processingStatus.video_url}`;
+        files.push({
+          id: "video",
+          name: "final_edit.mp4",
+          type: "video",
+          size: processingStatus.video_size ?? undefined,
+          downloadUrl: `${apiHost}/api/v1/process/${currentProjectId}/download/video`,
+          previewUrl,
+        });
       }
-    },
-    [],
-  );
+
+      if (processingStatus.xml_url) {
+        files.push({
+          id: "xml",
+          name: "generated_edit_sequence.xml",
+          type: "xml",
+          size: processingStatus.xml_size ?? undefined,
+          downloadUrl: `${apiHost}/api/v1/process/${currentProjectId}/download/xml`,
+        });
+      }
+
+      setOutputFiles(files);
+    } else if (processingStatus.status === "error") {
+      setProcessingState("error");
+      setErrorMessage(processingStatus.error_message ?? "Processing failed");
+    }
+  }, [processingStatus]);
 
   const handleFilesSelect = useCallback((files: FileItem[]) => {
     setSelectedFiles(files);
     setUploadedPaths([]);
+    setProjectId(null);
     setProcessingState("idle");
     setOutputFiles([]);
-    setProgress(0);
+    setErrorMessage(null);
   }, []);
 
-  const handleUploadComplete = useCallback((paths: string[]) => {
-    setUploadedPaths(paths);
-    console.log("Upload complete. Files stored at:", paths);
-  }, []);
+  const handleUploadComplete = useCallback(
+    (paths: string[], newProjectId: string) => {
+      setUploadedPaths(paths);
+      setProjectId(newProjectId);
+      console.log(
+        "Upload complete. Project ID:",
+        newProjectId,
+        "Files:",
+        paths,
+      );
+    },
+    [],
+  );
 
   const handleProcess = useCallback(async () => {
-    if (uploadedPaths.length === 0) return;
+    if (uploadedPaths.length === 0 || !projectId) return;
+    if (!scriptText.trim()) {
+      setErrorMessage("Please enter a script before processing");
+      return;
+    }
 
     setProcessingState("processing");
-    
-    // TODO: Call actual processing API
-    // For now, simulate processing
-    await simulateProgress(0, 100, 80);
+    setErrorMessage(null);
 
-    setOutputFiles([
-      {
-        id: "1",
-        name: "rough_cut.mp4",
-        type: "video",
-        size: 156237824, // ~149 MB
-        downloadUrl: "#",
-        duration: "3:42",
-      },
-      {
-        id: "2",
-        name: "timeline.xml",
-        type: "xml",
-        size: 245760,
-        downloadUrl: "#",
-      },
-    ]);
-
-    setProcessingState("complete");
-  }, [uploadedPaths, simulateProgress]);
+    try {
+      await startProcessingMutation.mutateAsync({
+        projectId,
+        scriptText: scriptText.trim(),
+      });
+      // Processing started - status will be polled automatically
+    } catch (error: unknown) {
+      setProcessingState("error");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to start processing",
+      );
+    }
+  }, [uploadedPaths, projectId, scriptText, startProcessingMutation]);
 
   const handleDownload = useCallback((file: OutputFile) => {
-    console.log("Downloading:", file.name);
+    if (file.downloadUrl) {
+      window.open(file.downloadUrl, "_blank");
+    }
   }, []);
 
   const handleDownloadAll = useCallback(() => {
     outputFiles.forEach((file) => {
-      console.log("Downloading:", file.name);
+      if (file.downloadUrl) {
+        window.open(file.downloadUrl, "_blank");
+      }
     });
   }, [outputFiles]);
 
   const handleReset = useCallback(() => {
     setSelectedFiles([]);
     setUploadedPaths([]);
+    setProjectId(null);
+    setScriptText("");
     setOutputFiles([]);
     setProcessingState("idle");
-    setProgress(0);
+    setErrorMessage(null);
   }, []);
 
   if (!user) return null;
 
   const hasUploadedFiles = uploadedPaths.length > 0;
-  const canProcess = hasUploadedFiles && processingState === "idle";
+  const hasScript = scriptText.trim().length > 0;
+  const canProcess =
+    hasUploadedFiles && hasScript && processingState === "idle";
 
   return (
     <div className="bg-background min-h-screen">
       {/* Background Pattern */}
       <div className="fixed inset-0 -z-10 opacity-30">
-        <div className="from-primary/5 absolute inset-0 bg-gradient-to-b via-transparent to-transparent" />
-        <div className="from-primary/10 absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] via-transparent to-transparent" />
+        <div className="from-primary/5 absolute inset-0 bg-linear-to-b via-transparent to-transparent" />
+        <div className="from-primary/10 absolute inset-0 bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] via-transparent to-transparent" />
       </div>
 
       {/* Header */}
@@ -198,7 +252,9 @@ export function Dashboard() {
 
           {/* Main Content Area */}
           <div className="border-border bg-card/50 rounded-2xl border p-6 backdrop-blur-sm">
-            {processingState === "idle" || processingState === "complete" ? (
+            {processingState === "idle" ||
+            processingState === "complete" ||
+            processingState === "error" ? (
               <div className="grid gap-8 lg:grid-cols-2">
                 {/* Upload Section */}
                 <div className="space-y-4">
@@ -252,18 +308,78 @@ export function Dashboard() {
               <OutputDisplay
                 files={[]}
                 isProcessing={true}
-                progress={progress}
+                progress={processingStatus?.status === "processing" ? 50 : 10}
               />
             )}
           </div>
 
+          {/* Script Input Section - Show when files are uploaded */}
+          {hasUploadedFiles && processingState !== "complete" && (
+            <div className="animate-in fade-in slide-in-from-bottom border-border bg-card/50 rounded-2xl border p-6 backdrop-blur-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <FileText className="text-primary h-5 w-5" />
+                <h2 className="text-title text-foreground">
+                  Script / Screenplay
+                </h2>
+              </div>
+              <p className="text-body-sm text-muted-foreground mb-4">
+                Paste your script below. The AI will use this to sync with your
+                video footage and create an optimized edit.
+              </p>
+              <textarea
+                value={scriptText}
+                onChange={(e) => setScriptText(e.target.value)}
+                placeholder="INT. LIVING ROOM - DAY
+
+Character enters the room and looks around...
+
+CHARACTER
+(nervously)
+Hello? Is anyone here?
+
+..."
+                className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:ring-primary/50 focus:border-primary h-48 w-full resize-y rounded-lg border px-4 py-3 font-mono text-sm focus:ring-2 focus:outline-none"
+                disabled={processingState === "processing"}
+              />
+              <p className="text-caption text-muted-foreground mt-2">
+                {scriptText.length} characters
+              </p>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="animate-in fade-in slide-in-from-bottom border-destructive/30 bg-destructive/10 rounded-lg border p-4">
+              <p className="text-body-sm text-destructive">{errorMessage}</p>
+            </div>
+          )}
+
           {/* Action Button */}
           {canProcess && (
             <div className="animate-in fade-in slide-in-from-bottom flex justify-center">
-              <Button size="lg" onClick={handleProcess} className="gap-2 px-8">
+              <Button
+                size="lg"
+                onClick={handleProcess}
+                className="gap-2 px-8"
+                disabled={startProcessingMutation.isPending}
+              >
                 <Sparkles className="h-4 w-4" />
-                Process with AI
+                {startProcessingMutation.isPending
+                  ? "Starting..."
+                  : "Process with AI"}
               </Button>
+            </div>
+          )}
+
+          {/* Processing Message */}
+          {processingState === "processing" && (
+            <div className="animate-in fade-in slide-in-from-bottom text-center">
+              <p className="text-body-sm text-muted-foreground">
+                Processing your videos... This may take several minutes.
+              </p>
+              <p className="text-caption text-muted-foreground mt-1">
+                Status updates every 30 seconds
+              </p>
             </div>
           )}
 

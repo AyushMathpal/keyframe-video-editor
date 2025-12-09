@@ -7,9 +7,10 @@ interface OutputFile {
   id: string;
   name: string;
   type: "xml" | "video";
-  size: number;
+  size?: number;
   downloadUrl?: string;
   duration?: string; // For video files
+  previewUrl?: string;
 }
 
 interface OutputDisplayProps {
@@ -27,7 +28,8 @@ export function OutputDisplay({
   onDownload,
   onDownloadAll,
 }: OutputDisplayProps) {
-  const formatBytes = (bytes: number) => {
+  const formatBytes = (bytes?: number) => {
+    if (bytes == null) return "Unknown size";
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
     const sizes = ["Bytes", "KB", "MB", "GB"];
@@ -75,14 +77,14 @@ export function OutputDisplay({
   const getFileColors = (type: OutputFile["type"]) => {
     if (type === "video") {
       return {
-        bg: "bg-gradient-to-br from-rose-500/20 to-orange-500/20",
+        bg: "bg-linear-to-br from-rose-500/20 to-orange-500/20",
         border: "border-rose-500/30",
         icon: "text-rose-400",
         badge: "bg-rose-500/20 text-rose-300",
       };
     }
     return {
-      bg: "bg-gradient-to-br from-emerald-500/20 to-teal-500/20",
+      bg: "bg-linear-to-br from-emerald-500/20 to-teal-500/20",
       border: "border-emerald-500/30",
       icon: "text-emerald-400",
       badge: "bg-emerald-500/20 text-emerald-300",
@@ -268,25 +270,38 @@ export function OutputDisplay({
           )}
         >
           {/* Decorative gradient */}
-          <div className="pointer-events-none absolute -top-20 -right-20 h-40 w-40 rounded-full bg-gradient-to-br from-white/10 to-transparent blur-3xl" />
+          <div className="pointer-events-none absolute -top-20 -right-20 h-40 w-40 rounded-full bg-linear-to-br from-white/10 to-transparent blur-3xl" />
 
           <div className="relative">
-            {/* Video Preview Placeholder */}
-            <div className="mb-4 flex aspect-video items-center justify-center rounded-lg bg-black/30">
-              <div className="flex flex-col items-center gap-2">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
-                  <svg
-                    className="h-8 w-8 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
+            {/* Video Preview */}
+            <div className="mb-4 overflow-hidden rounded-lg bg-black/50">
+              {videoFile.previewUrl ? (
+                <video
+                  controls
+                  preload="metadata"
+                  className="h-full w-full"
+                  src={videoFile.previewUrl}
+                >
+                  Your browser does not support the video tag.
+                </video>
+              ) : (
+                <div className="flex aspect-video items-center justify-center bg-black/30">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
+                      <svg
+                        className="h-8 w-8 text-white"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                    <span className="text-caption text-white/60">
+                      {videoFile.duration ?? "Preview"}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-caption text-white/60">
-                  {videoFile.duration ?? "Preview"}
-                </span>
-              </div>
+              )}
             </div>
 
             <div className="flex items-start justify-between">
@@ -365,7 +380,7 @@ export function OutputDisplay({
           style={{ animationDelay: "100ms" }}
         >
           {/* Decorative gradient */}
-          <div className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-gradient-to-br from-white/5 to-transparent blur-2xl" />
+          <div className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-linear-to-br from-white/5 to-transparent blur-2xl" />
 
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-4">
